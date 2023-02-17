@@ -1,0 +1,86 @@
+name: go-hwd-site
+recipe: pantheon
+config:
+  framework: wordpress
+  site: go-hwd-site
+  id: 0b3b00ac-e48d-40c5-b800-113f094d4de9
+  database: pantheon
+  username: pantheon
+  password: pantheon
+  host: database
+  port: 3306
+  # Set xdebug to off by default. Enable it with lando xdebug-on.
+  xdebug: false
+#  composer_version: xxx
+  config:
+    # Custom PHP config overrides.
+#    php: lando/php-conf/php.ini
+proxy:
+  appserver_nginx:
+    # Add reliable domain. Requires adding to /etc/hosts on local machine to work.
+    - go-hwd-site.lando
+services:
+  appserver:
+    build_as_root:
+      # Configure PHP.
+      # For some reason php.ini keeps being copied as a directory.
+      # To fix this on rebuild where it's already happened, we need to remove the directory.
+      - rm -rf /app/lando/php-conf/php.ini
+      - rm -f /app/lando/php-conf/php.ini
+      - cp /app/lando/php-conf/default.php.ini /app/lando/php-conf/php.ini
+      # Create error logs.
+      - mkdir -p /app/lando/logs
+      - rm -f /app/lando/logs/php_errors.log
+      - touch /app/lando/logs/php_errors.log
+      - rm -f /app/lando/logs/xdebug.log
+      - touch /app/lando/logs/xdebug.log
+      # Install Nano for debugging purposes.
+      - mkdir -p /var/lib/apt/lists/partial
+      - apt-get update && apt install nano
+      # Start developer off with reasonable WordPress settings.
+#      - UPDATE BELOW FOR LOCAL
+      # - cp /app/default.wp-config-local.php /app/wp-config-local.php
+    build:
+      # Custom configuration for Terminus.
+      # (Terminus is installed as part of Lando pantheon recipe).
+      - mkdir -p /var/www/.terminus
+      - cp /app/lando/terminus-conf/config.yml /var/www/.terminus/config.yml
+    overrides:
+      environment:
+        # Support debugging Drush with Xdebug.
+        PHP_IDE_CONFIG: "serverName=appserver"
+        # This is apparently necessary to overwrite the default Xdebug 3.0
+        # config so that our config in /lando/php-conf/php.ini is used.
+        XDEBUG_MODE:
+  database:
+    portforward: 32805
+
+tooling:
+# Disable pulling code via lando pull. Use git pull instead.
+# This also prevents devs from pulling code from the Pantheon repo
+# which is different than the GitHub repo because of CircleCI
+# (Composer dependencies are committed to Pantheon).
+  pull:
+    options:
+      code:
+        default: none
+  push:
+    options:
+      code:
+        default: none
+  xdebug:
+    description: Loads Xdebug in the selected mode
+    cmd:
+      - appserver: /app/lando/scripts/xdebug.sh
+    user: root
+  logs-php:
+    service: appserver
+    description: Displays and tails PHP error logs
+    cmd: tail -f /app/lando/logs/php_errors.log
+  logs-xdebug:
+    service: appserver
+    description: Displays and tails Xdebug logs
+    cmd: tail -f /app/lando/logs/xdebug.log
+events:
+  pre-start:
+    - appserver: composer install
